@@ -25,6 +25,9 @@ extern "C" {
     pub fn get_webgl1_version() -> String;
     pub fn get_webgl2_version() -> String;
     pub fn get_url_param() -> String;
+    pub fn get_position_param() -> JsValue;
+    pub fn get_target_param() -> JsValue;
+    pub fn get_up_param() -> JsValue;
 }
 
 
