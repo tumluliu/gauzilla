@@ -638,8 +638,6 @@ impl QuadGLSL {
     }
 }
 
-use js_sys::Array;
-
 #[allow(unused_mut)]
 pub async fn main() {
     let error_flag = Arc::new(AtomicBool::new(false));
@@ -666,17 +664,11 @@ pub async fn main() {
 
     let fovy = degrees(45.0);
 
-    let position_val = get_position_param();
-    let position_array: Array = Array::from(&position_val);
-    let target_val = get_target_param();
-    let target_array: Array = Array::from(&target_val);
-    let up_val = get_up_param();
-    let up_array: Array = Array::from(&up_val);
     let mut camera = Camera::new_perspective(
         window.viewport(),
-        vec3(position_array.get(0).as_f64().unwrap_or(0.0) as f32, position_array.get(1).as_f64().unwrap_or(0.0) as f32, position_array.get(2).as_f64().unwrap_or(5.0) as f32),
-        vec3(target_array.get(0).as_f64().unwrap_or(0.0) as f32, target_array.get(1).as_f64().unwrap_or(0.0) as f32, target_array.get(2).as_f64().unwrap_or(5.0) as f32),
-        vec3(up_array.get(0).as_f64().unwrap_or(0.0) as f32, up_array.get(1).as_f64().unwrap_or(0.0) as f32, up_array.get(2).as_f64().unwrap_or(5.0) as f32),
+        get_position(),
+        get_target(),
+        get_up(),
         fovy,
         0.1,//0.2,
         10.0,//200.0,
