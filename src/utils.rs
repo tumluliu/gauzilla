@@ -6,7 +6,9 @@ use std::{
 };
 //use parking_lot::{Mutex, RawMutex};
 use half::f16;
+use three_d::*;
 
+use js_sys::Array;
 
 #[macro_export]
 macro_rules! log {
@@ -25,8 +27,37 @@ extern "C" {
     pub fn get_webgl1_version() -> String;
     pub fn get_webgl2_version() -> String;
     pub fn get_url_param() -> String;
+    pub fn get_position_param() -> JsValue;
+    pub fn get_target_param() -> JsValue;
+    pub fn get_up_param() -> JsValue;
 }
 
+// Convert Javascript's 64 bit float array to f32s expected by Vec3
+fn convert_js_array_to_vector3(js_array: JsValue) -> Vec3 {
+    let array: Array = js_sys::Array::from(&js_array);
+    let x = array.get(0).as_f64().unwrap_or(0.0) as f32;
+    let y = array.get(1).as_f64().unwrap_or(0.0) as f32;
+    let z = array.get(2).as_f64().unwrap_or(0.0) as f32;
+    vec3(x, y, z)
+}
+
+// Get the position JsVal and convert into a Vec3
+pub fn get_position() -> Vec3 {
+    let position_val = get_position_param();
+    convert_js_array_to_vector3(position_val)
+}
+
+// Get the target JsVal and convert into a Vec3
+pub fn get_target() -> Vec3 {
+    let target_val = get_target_param();
+    convert_js_array_to_vector3(target_val)
+}
+
+// Get the up JsVal and convert into a Vec3
+pub fn get_up() -> Vec3 {
+    let up_val = get_up_param();
+    convert_js_array_to_vector3(up_val)
+}
 
 /// Enable better error messages if our code ever panics
 pub fn set_panic_hook() {

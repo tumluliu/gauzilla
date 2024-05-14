@@ -42,3 +42,28 @@ export function get_url_param() {
         return "";
     }
 }
+
+function getVectorParam(paramName, defaultValue) {
+    const params = new URLSearchParams(window.location.search);
+    const param = params.get(paramName);
+    if (!param) {
+        return defaultValue;  // Default value if the parameter is not found
+    }
+    const numbers = param.split(',').map(Number);
+    if (numbers.length !== 3 || numbers.some(isNaN)) {
+        return defaultValue;  // Default value if the parameter is malformed
+    }
+    return numbers;
+}
+
+export function get_position_param() {
+    return getVectorParam('position', [0.0, 0.0, 5.0]);
+}
+
+export function get_target_param() {
+    return getVectorParam('target', [0.0, 0.0, 0.0]);
+}
+
+export function get_up_param() {
+    return getVectorParam('up', [0.0, 1.0, 0.0]);
+}

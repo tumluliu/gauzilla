@@ -638,7 +638,6 @@ impl QuadGLSL {
     }
 }
 
-
 #[allow(unused_mut)]
 pub async fn main() {
     let error_flag = Arc::new(AtomicBool::new(false));
@@ -664,11 +663,12 @@ pub async fn main() {
     log!("main(): GLSL version: {}", glsl_ver);
 
     let fovy = degrees(45.0);
+
     let mut camera = Camera::new_perspective(
         window.viewport(),
-        vec3(0.0, 0.0, 5.0),
-        vec3(0.0, 0.0, 0.0),
-        vec3(0.0, 1.0, 0.0),
+        get_position(),
+        get_target(),
+        get_up(),
         fovy,
         0.1,//0.2,
         10.0,//200.0,
