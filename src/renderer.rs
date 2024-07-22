@@ -690,7 +690,7 @@ pub async fn main() {
 
     let mut url = get_url_param();
     if url.is_empty() {
-        url = "book_store.splat".to_string();
+        url = "https://huggingface.co/datasets/satyoshi/gauzilla-data/resolve/main/book_store.splat".to_string();
     }
     log!("main(): url={}", url);
 

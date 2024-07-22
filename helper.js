@@ -37,11 +37,16 @@ export function get_webgl2_version() {
 export function get_url_param() {
     const params = new URLSearchParams(location.search);
     if (params.has("url")) {
-        return params.get("url");
+        let url = params.get("url");
+        if (!url.toLowerCase().includes("http")) {
+            url = "https://huggingface.co/datasets/satyoshi/gauzilla-data/resolve/main/" + url;
+        }
+        return url;
     } else {
         return "";
     }
 }
+
 
 function getVectorParam(paramName, defaultValue) {
     const params = new URLSearchParams(window.location.search);
