@@ -61,14 +61,22 @@ function getVectorParam(paramName, defaultValue) {
     return numbers;
 }
 
+
 export function get_position_param() {
     return getVectorParam('position', [0.0, 0.0, 5.0]);
 }
+
 
 export function get_target_param() {
     return getVectorParam('target', [0.0, 0.0, 0.0]);
 }
 
+
 export function get_up_param() {
     return getVectorParam('up', [0.0, 1.0, 0.0]);
+}
+
+
+export async function sleep_js(ms) {
+    await new Promise(resolve => setTimeout(resolve, ms));
 }

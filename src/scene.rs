@@ -9,6 +9,7 @@ use bus::Bus;
 
 use crate::log; // macro import
 use crate::utils::*;
+use crate::spz::{Spz, load_spz};
 
 
 const MAX_HEADER_LINES: usize = 65;
@@ -28,6 +29,22 @@ struct SerializedSplat {
 impl Default for SerializedSplat {
     fn default() -> Self {
         unsafe { std::mem::MaybeUninit::<SerializedSplat>::zeroed().assume_init() }
+    }
+}
+
+
+#[derive(Clone)]
+#[repr(C)]
+pub struct SerializedSplat2 { // Scaniverse PLY format (no normals) / SPZ format
+    pub position: [f32; 3],
+    pub scale: [f32; 3],
+    pub rotation: [f32; 4],
+    pub alpha: f32,
+    pub color: [f32; 3*16],
+} // 59*f32 (59*4=236bytes) in total
+impl Default for SerializedSplat2 {
+    fn default() -> Self {
+        unsafe { std::mem::MaybeUninit::<SerializedSplat2>::zeroed().assume_init() }
     }
 }
 
@@ -124,6 +141,89 @@ impl Scene {
         );
         log!(
             "Scene::load(): size_list[0]={}, size_list[-1]={}",
+            size_list[size_index[0] as usize],
+            size_list[size_index[size_index.len()-1] as usize]
+        );
+
+        // construct a new binary buffer where each row corresponds to a splat in the sorted order.
+        // XYZ - position (f32)
+        // XYZ - scale (f32)
+        // RGBA - color (u8)
+        // IJKL - quaternion (u8)
+        let row_length = 3*4 + 3*4 + 4 + 4; // 32bytes
+        let mut buffer = vec![0_u8; row_length*self.splat_count];
+        for i in 0..self.splat_count {
+            let row = size_index[i] as usize;
+            let s = &serialized_splats[row];
+
+            let mut start = i*row_length;
+            let mut end = start + 3*4;
+            { // read 3x f32
+                let position: &mut [f32] = transmute_slice_mut::<_, f32>(&mut buffer[start..end]);
+                position[0] = s.position[0];
+                position[1] = s.position[1];
+                position[2] = s.position[2];
+            }
+
+            start = end;
+            end = start + 3*4;
+            { // read 3x f32
+                let scales: &mut [f32] = transmute_slice_mut::<_, f32>(&mut buffer[start..end]);
+                scales[0] = s.scale[0].exp();
+                scales[1] = s.scale[1].exp();
+                scales[2] = s.scale[2].exp();
+            }
+
+            // In Rust, float-to-integer casts saturate
+            // (i.e., excess values are converted to T::MAX or T::MIN. NaN is converted to 0).
+
+            start = end;
+            end = start + 4;
+            { // read 4x u8
+                let rgba: &mut [u8] = transmute_slice_mut::<_, u8>(&mut buffer[start..end]);
+                rgba[0] = ((0.5 + SH_C0*s.color[0]) * 255.0) as u8;
+                rgba[1] = ((0.5 + SH_C0*s.color[1]) * 255.0) as u8;
+                rgba[2] = ((0.5 + SH_C0*s.color[2]) * 255.0) as u8;
+                rgba[3] = ((1.0 / (1.0 + (-s.alpha).exp()))*255.0) as u8; // opacity from sigmoid
+            }
+
+            start = end;
+            end = start + 4;
+            { // read 4x u8
+                let rot: &mut [u8] = transmute_slice_mut::<_, u8>(&mut buffer[start..end]);
+                let qlen = (s.rotation[0].powi(2) + s.rotation[1].powi(2) + s.rotation[2].powi(2) + s.rotation[3].powi(2)).sqrt();
+                // [-1, 1] -> [0, 255]
+                rot[0] = (((s.rotation[0]/qlen) + 1.0)*0.5 * 255.0) as u8;
+                rot[1] = (((s.rotation[1]/qlen) + 1.0)*0.5 * 255.0) as u8;
+                rot[2] = (((s.rotation[2]/qlen) + 1.0)*0.5 * 255.0) as u8;
+                rot[3] = (((s.rotation[3]/qlen) + 1.0)*0.5 * 255.0) as u8;
+            }
+        }
+        self.buffer = buffer;
+    }
+
+
+    /// Loads an entire PLY file (w/o normals) into WASM memory
+    pub fn load_no_normal(&mut self, serialized_splats: Vec<SerializedSplat2>) { // TODO: remove code redundancy w/ load()
+        // calculate importance of each splat
+        let mut size_list = vec![0_f32; self.splat_count];
+        let mut size_index = vec![0_u32; self.splat_count];
+        for i in 0..self.splat_count {
+            let s = &serialized_splats[i];
+            size_index[i] = i as u32;
+            let size = s.scale[0].exp()*s.scale[1].exp()*s.scale[2].exp();
+            let opacity = 1.0 / (1.0 + (-s.alpha).exp());
+            size_list[i] = (size as f32)*opacity;
+        }
+
+        // sort the indices of splats based on size_list in descending order
+        size_index.sort_by(
+            |&a, &b| size_list[b as usize]
+                .partial_cmp(&size_list[a as usize])
+                .unwrap_or(Ordering::Equal)
+        );
+        log!(
+            "Scene::load_no_normal(): size_list[0]={}, size_list[-1]={}",
             size_list[size_index[0] as usize],
             size_list[size_index[size_index.len()-1] as usize]
         );
@@ -355,7 +455,7 @@ impl Scene {
         //log!("Scene::sort(): max_depth={:?}, min_depth={:?}", max_depth, min_depth);
 
         let size16: usize = 256*256; // 65,536
-        let depth_inv = size16 as f32 / (max_depth - min_depth) as f32;
+        let depth_inv = (size16 - 1) as f32 / (max_depth - min_depth) as f32;
 
         let mut counts0 = vec![0_u32; size16];
         // count the occurrences of each depth
@@ -457,7 +557,7 @@ impl Scene {
         //log!("Scene::sort(): max_depth={:?}, min_depth={:?}", max_depth, min_depth);
 
         let size16: usize = 256*256; // 65,536
-        let depth_inv = size16 as f32 / (max_depth - min_depth) as f32;
+        let depth_inv = (size16 - 1) as f32 / (max_depth - min_depth) as f32;
 
         let mut counts0 = vec![0_u32; size16];
         // count the occurrences of each depth
@@ -508,7 +608,7 @@ pub async fn load_scene() -> Scene {
     let mut scene = Scene::new();
 
     let file = rfd::AsyncFileDialog::new()
-        .add_filter("3DGS model", &["ply", "splat"])
+        .add_filter("3DGS model", &["ply", "splat", "spz"])
         .pick_file().await;
     if let Some(f) = file.as_ref() {
         if f.file_name().contains(".ply") {
@@ -529,9 +629,21 @@ pub async fn load_scene() -> Scene {
             }
             scene.splat_count = splat_count;
             scene.load(&mut cursor, file_header_size);
+
         } else if f.file_name().contains(".splat") {
             scene.buffer = f.read().await;
             scene.splat_count = scene.buffer.len() / 32; // 32bytes per splat
+
+        } else if f.file_name().contains(".spz") {
+            let mut spz = Spz::new();
+            spz.init();
+
+            let buffer = f.read().await;
+            let serialized_splats = load_spz(&mut spz, buffer).await;
+
+            scene.splat_count = serialized_splats.len();
+            scene.load_no_normal(serialized_splats);
+
         } else {
             unreachable!();
         }

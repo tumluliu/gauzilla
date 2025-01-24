@@ -3,12 +3,14 @@
     unused_variables,
     dead_code,
 )]
+#![feature(slice_as_array)]
 
 use wasm_bindgen::prelude::*;
 
 mod utils;
 mod scene;
 mod renderer;
+mod spz;
 
 
 #[wasm_bindgen(start)]

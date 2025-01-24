@@ -1,9 +1,10 @@
 # Gauzilla
-A 3D Gaussian Splatting (3DGS) renderer written in Rust for platform-agnostic WebAssembly (WASM) with lock-free multithreading.
+A 3D Gaussian Splatting (3DGS) renderer written in Rust for platform-agnostic WebAssembly (WASM) with lock-free multithreading. Check out [Gauzilla Pro](https://www.gauzilla.xyz/) for an AI-powered & feature-rich editor version.
 * Uses WebGL and CPU splat sorting (based on [splat](https://github.com/antimatter15/splat)) for high compatibility among web browsers
 * Circumvents [WASM's limitations in multithreading](https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html) via the use of the lock-free [bus](https://github.com/jonhoo/bus) mechanism
 * Uses [rfd](https://github.com/PolyMeilex/rfd) to securely load a .ply or .splat file stored locally on the host machine
 * Loads a .splat file asynchronously from a URL (CDN) without having to use async code in Rust
+* Loads a [.spz](https://scaniverse.com/news/spz-gaussian-splat-open-source-file-format) file using a WASM module compiled from the official C++ implementation
 
 
 ![Screenshot #1](images/gauzilla_01.png?raw=true "Screenshot #1")
