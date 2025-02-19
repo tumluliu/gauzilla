@@ -121,10 +121,10 @@ impl GaussianCloud {
             ];
 
             splat.rotation = [
-                self.rotations[i*4 + 0],
                 self.rotations[i*4 + 1],
                 self.rotations[i*4 + 2],
                 self.rotations[i*4 + 3],
+                self.rotations[i*4 + 0],
             ];
 
             splat.alpha = self.alphas[i];
