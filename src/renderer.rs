@@ -1,24 +1,29 @@
 #[allow(unused_imports)]
 use std::{
-    sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}},
-    rc::Rc,
     cell::RefCell,
+    rc::Rc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 //use parking_lot::Mutex;
-use three_d::*;
-use wasm_thread as thread;
 use bus::{Bus, BusReader};
 use num_format::{Locale, ToFormattedString};
+use three_d::*;
+use wasm_thread as thread;
 
 use crate::log; // macro import
-use crate::utils::*;
 use crate::scene::*;
-
+use crate::scene_graph::{SceneGraph, SceneGraphRenderer};
+use crate::utils::*;
 
 #[derive(PartialEq)]
-enum TdCameraControl { Orbit, Fly }
-
+enum TdCameraControl {
+    Orbit,
+    Fly,
+}
 
 /// Re-implementation of three_d::OrbitControl to add right mouse button control
 pub struct OrbitControl2 {
@@ -46,7 +51,6 @@ impl OrbitControl2 {
 
     /// Handles the events. Must be called each frame.
     pub fn handle_events(&mut self, camera: &mut Camera, events: &mut [Event]) -> bool {
-
         // need to re-calculate the change so as to translate the target for orbit
         let mut change = Vec3::zero();
         for event in events.iter() {
@@ -59,7 +63,9 @@ impl OrbitControl2 {
                 } => {
                     if let Some(b) = button {
                         if let MouseButton::Right = b {
-                            if let CameraAction::Left { speed } = &self.control.right_drag_horizontal {
+                            if let CameraAction::Left { speed } =
+                                &self.control.right_drag_horizontal
+                            {
                                 change += -camera.right_direction() * delta.0 * (*speed);
                             }
                             if let CameraAction::Up { speed } = &self.control.right_drag_vertical {
@@ -95,7 +101,6 @@ impl OrbitControl2 {
     }
 }
 
-
 #[allow(unused_mut)]
 fn launch_sorter_thread(
     scene: Arc<Scene>,
@@ -121,19 +126,31 @@ fn launch_sorter_thread(
                 let mut s = Scene::new();
                 s.buffer = buffer;
                 s.splat_count = s.buffer.len() / 32; // 32bytes per splat
-                //s.generate_texture(); // texture is created instead in render loop in main thread
+                                                     //s.generate_texture(); // texture is created instead in render loop in main thread
                 scene = Arc::new(s);
             }
 
             // receive view proj matrix from main thread
             if let Ok(view_proj) = rx_vp.try_recv() {
                 let view_proj_slice = &[
-                    view_proj[0][0], view_proj[0][1], view_proj[0][2], view_proj[0][3],
-                    view_proj[1][0], view_proj[1][1], view_proj[1][2], view_proj[1][3],
-                    view_proj[2][0], view_proj[2][1], view_proj[2][2], view_proj[2][3],
-                    view_proj[3][0], view_proj[3][1], view_proj[3][2], view_proj[3][3]
+                    view_proj[0][0],
+                    view_proj[0][1],
+                    view_proj[0][2],
+                    view_proj[0][3],
+                    view_proj[1][0],
+                    view_proj[1][1],
+                    view_proj[1][2],
+                    view_proj[1][3],
+                    view_proj[2][0],
+                    view_proj[2][1],
+                    view_proj[2][2],
+                    view_proj[2][3],
+                    view_proj[3][0],
+                    view_proj[3][1],
+                    view_proj[3][2],
+                    view_proj[3][3],
                 ];
-                let start =  get_time_milliseconds();
+                let start = get_time_milliseconds();
                 Scene::sort(&scene, view_proj_slice, &mut bus_depth, cpu_cores);
                 let sort_time = get_time_milliseconds() - start;
                 //////////////////////////////////
@@ -146,7 +163,6 @@ fn launch_sorter_thread(
 
     thread_handle
 }
-
 
 /*
 #[allow(unused_mut)]
@@ -192,18 +208,19 @@ fn launch_sorter_thread2(
 }
 */
 
-
 fn create_glsl_program(
     gl: &Context,
     vs_file: &str,
     fs_file: &str,
     error_flag: &Arc<AtomicBool>,
-    error_msg: &Arc<Mutex<String>>
+    error_msg: &Arc<Mutex<String>>,
 ) -> context::Program {
     unsafe {
-        let vert_shader = gl.create_shader(context::VERTEX_SHADER)
+        let vert_shader = gl
+            .create_shader(context::VERTEX_SHADER)
             .expect("Failed creating vertex shader");
-        let frag_shader = gl.create_shader(context::FRAGMENT_SHADER)
+        let frag_shader = gl
+            .create_shader(context::FRAGMENT_SHADER)
             .expect("Failed creating fragment shader");
 
         gl.shader_source(vert_shader, vs_file);
@@ -211,8 +228,7 @@ fn create_glsl_program(
         gl.compile_shader(vert_shader);
         gl.compile_shader(frag_shader);
 
-        let id = gl.create_program()
-            .expect("Failed creating program");
+        let id = gl.create_program().expect("Failed creating program");
 
         gl.attach_shader(id, vert_shader);
         gl.attach_shader(id, frag_shader);
@@ -222,22 +238,25 @@ fn create_glsl_program(
             let log = gl.get_shader_info_log(vert_shader);
             if !log.is_empty() {
                 set_error_for_egui(
-                    error_flag, error_msg,
-                    format!("ERROR: gl.get_program_link_status(): {}", log)
+                    error_flag,
+                    error_msg,
+                    format!("ERROR: gl.get_program_link_status(): {}", log),
                 );
             }
             let log = gl.get_shader_info_log(frag_shader);
             if !log.is_empty() {
                 set_error_for_egui(
-                    error_flag, error_msg,
-                    format!("ERROR: gl.get_program_link_status(): {}", log)
+                    error_flag,
+                    error_msg,
+                    format!("ERROR: gl.get_program_link_status(): {}", log),
                 );
             }
             let log = gl.get_program_info_log(id);
             if !log.is_empty() {
                 set_error_for_egui(
-                    error_flag, error_msg,
-                    format!("ERROR: gl.get_program_link_status(): {}", log)
+                    error_flag,
+                    error_msg,
+                    format!("ERROR: gl.get_program_link_status(): {}", log),
                 );
             }
             //unreachable!();
@@ -251,7 +270,6 @@ fn create_glsl_program(
         return id;
     }
 }
-
 
 struct SplatGLSL {
     program: Option<context::Program>,
@@ -276,7 +294,6 @@ impl SplatGLSL {
     const VERT_SHADER: &'static str = include_str!("gsplat.vert");
     const FRAG_SHADER: &'static str = include_str!("gsplat.frag");
 
-
     pub fn new() -> Self {
         Self {
             program: None,
@@ -299,20 +316,19 @@ impl SplatGLSL {
         }
     }
 
-
     pub fn init(
         &mut self,
         gl: &Context,
         error_flag: &Arc<AtomicBool>,
         error_msg: &Arc<Mutex<String>>,
-        scene: &Arc<Scene>
+        scene: &Arc<Scene>,
     ) {
         let gsplat_program_id = create_glsl_program(
             gl,
             Self::VERT_SHADER,
             Self::FRAG_SHADER,
             error_flag,
-            error_msg
+            error_msg,
         );
         self.program = Some(gsplat_program_id);
         log!("SplatGLSL::init(): self.program={:?}", self.program);
@@ -321,7 +337,10 @@ impl SplatGLSL {
             gl.use_program(self.program);
             {
                 self.u_projection = gl.get_uniform_location(gsplat_program_id, "projection");
-                log!("SplatGLSL::init(): self.u_projection={:?}", self.u_projection);
+                log!(
+                    "SplatGLSL::init(): self.u_projection={:?}",
+                    self.u_projection
+                );
                 self.u_viewport = gl.get_uniform_location(gsplat_program_id, "viewport");
                 log!("SplatGLSL::init(): self.u_viewport={:?}", self.u_viewport);
                 self.u_focal = gl.get_uniform_location(gsplat_program_id, "focal");
@@ -333,20 +352,30 @@ impl SplatGLSL {
                 self.u_cam_pos = gl.get_uniform_location(gsplat_program_id, "cam_pos");
                 log!("SplatGLSL::init(): self.u_cam_pos={:?}", self.u_cam_pos);
                 self.u_splat_scale = gl.get_uniform_location(gsplat_program_id, "splat_scale");
-                log!("SplatGLSL::init(): self.u_splat_scale={:?}", self.u_splat_scale);
+                log!(
+                    "SplatGLSL::init(): self.u_splat_scale={:?}",
+                    self.u_splat_scale
+                );
 
-                let triangle_vertices = &mut [ // quad
-                    -1_f32, -1.0,
-                    1.0, -1.0,
-                    1.0, 1.0,
-                    -1.0, 1.0,
+                let triangle_vertices = &mut [
+                    // quad
+                    -1_f32, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0,
                 ];
                 triangle_vertices.iter_mut().for_each(|v| *v *= 2.0);
                 self.vertex_buffer = Some(gl.create_buffer().unwrap());
-                log!("SplatGLSL::init(): self.vertex_buffer={:?}", self.vertex_buffer);
+                log!(
+                    "SplatGLSL::init(): self.vertex_buffer={:?}",
+                    self.vertex_buffer
+                );
                 gl.bind_buffer(context::ARRAY_BUFFER, self.vertex_buffer);
-                gl.buffer_data_u8_slice(context::ARRAY_BUFFER, transmute_slice::<_, u8>(triangle_vertices), context::STATIC_DRAW);
-                self.a_position = gl.get_attrib_location(gsplat_program_id, "position").unwrap();
+                gl.buffer_data_u8_slice(
+                    context::ARRAY_BUFFER,
+                    transmute_slice::<_, u8>(triangle_vertices),
+                    context::STATIC_DRAW,
+                );
+                self.a_position = gl
+                    .get_attrib_location(gsplat_program_id, "position")
+                    .unwrap();
                 log!("SplatGLSL::init(): self.a_position={:?}", self.a_position);
                 gl.enable_vertex_attrib_array(self.a_position);
                 gl.bind_buffer(context::ARRAY_BUFFER, self.vertex_buffer);
@@ -355,13 +384,20 @@ impl SplatGLSL {
                 self.texture = Some(gl.create_texture().unwrap());
                 log!("SplatGLSL::init(): self.texture={:?}", self.texture); // WebTextureKey(1v1)
                 gl.bind_texture(context::TEXTURE_2D, self.texture);
-                self.u_splat_texture = gl.get_uniform_location(gsplat_program_id, "u_splat_texture");
-                log!("SplatGLSL::init(): self.u_splat_texture={:?}", self.u_splat_texture);
+                self.u_splat_texture =
+                    gl.get_uniform_location(gsplat_program_id, "u_splat_texture");
+                log!(
+                    "SplatGLSL::init(): self.u_splat_texture={:?}",
+                    self.u_splat_texture
+                );
                 gl.uniform_1_i32(self.u_splat_texture.as_ref(), 0); // associate the active texture unit with the uniform
 
                 // index buffer for instanced rendering
                 self.index_buffer = Some(gl.create_buffer().unwrap());
-                log!("SplatGLSL::init(): self.index_buffer={:?}", self.index_buffer);
+                log!(
+                    "SplatGLSL::init(): self.index_buffer={:?}",
+                    self.index_buffer
+                );
                 //gl.bind_buffer(context::ARRAY_BUFFER, self.index_buffer);
                 self.a_index = gl.get_attrib_location(gsplat_program_id, "index").unwrap();
                 log!("SplatGLSL::init(): self.a_index={:?}", self.a_index);
@@ -373,10 +409,26 @@ impl SplatGLSL {
             gl.use_program(None);
 
             gl.bind_texture(context::TEXTURE_2D, self.texture);
-            gl.tex_parameter_i32(context::TEXTURE_2D, context::TEXTURE_WRAP_S, context::CLAMP_TO_EDGE as i32);
-            gl.tex_parameter_i32(context::TEXTURE_2D, context::TEXTURE_WRAP_T, context::CLAMP_TO_EDGE as i32);
-            gl.tex_parameter_i32(context::TEXTURE_2D, context::TEXTURE_MIN_FILTER, context::NEAREST as i32);
-            gl.tex_parameter_i32(context::TEXTURE_2D, context::TEXTURE_MAG_FILTER, context::NEAREST as i32);
+            gl.tex_parameter_i32(
+                context::TEXTURE_2D,
+                context::TEXTURE_WRAP_S,
+                context::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                context::TEXTURE_2D,
+                context::TEXTURE_WRAP_T,
+                context::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                context::TEXTURE_2D,
+                context::TEXTURE_MIN_FILTER,
+                context::NEAREST as i32,
+            );
+            gl.tex_parameter_i32(
+                context::TEXTURE_2D,
+                context::TEXTURE_MAG_FILTER,
+                context::NEAREST as i32,
+            );
 
             #[cfg(not(feature = "async_splat_stream"))]
             gl.tex_image_2d(
@@ -388,7 +440,7 @@ impl SplatGLSL {
                 0,
                 context::RGBA_INTEGER,
                 context::UNSIGNED_INT,
-                Some(transmute_slice::<_, u8>(scene.tex_data.as_slice()))
+                Some(transmute_slice::<_, u8>(scene.tex_data.as_slice())),
             );
 
             //gl.active_texture(context::TEXTURE0);
@@ -398,7 +450,6 @@ impl SplatGLSL {
             gl.bind_texture(context::TEXTURE_2D, None);
         }
     }
-
 
     pub fn render(
         &self,
@@ -411,7 +462,7 @@ impl SplatGLSL {
         cam_pos: &[f32],
         splat_scale: f32,
         rx_depth: &mut BusReader<Vec<u32>>,
-        splat_count: i32
+        splat_count: i32,
     ) {
         unsafe {
             gl.use_program(self.program);
@@ -462,19 +513,14 @@ impl SplatGLSL {
                     gl.buffer_data_u8_slice(
                         context::ARRAY_BUFFER,
                         transmute_slice::<_, u8>(depth_index.as_slice()),
-                        context::DYNAMIC_DRAW
+                        context::DYNAMIC_DRAW,
                     );
                 }
                 //////////////////////////////////
                 gl.vertex_attrib_pointer_i32(self.a_index, 1, context::INT, 0, 0);
                 gl.vertex_attrib_divisor(self.a_index, 1);
 
-                gl.draw_arrays_instanced(
-                    context::TRIANGLE_FAN,
-                    0,
-                    4,
-                    splat_count
-                );
+                gl.draw_arrays_instanced(context::TRIANGLE_FAN, 0, 4, splat_count);
             }
             gl.use_program(None);
             gl.bind_buffer(context::ARRAY_BUFFER, None);
@@ -482,7 +528,6 @@ impl SplatGLSL {
         }
     }
 }
-
 
 struct QuadGLSL {
     // render to texture
@@ -501,15 +546,9 @@ impl QuadGLSL {
     const FRAG_SHADER: &'static str = include_str!("quad.frag");
     const VERTICES: &'static [f32; 18] = &[
         // XYZ
-        -1.0,  1.0, 0.0,
-        -1.0, -1.0, 0.0,
-         1.0, -1.0, 0.0,
-
-        -1.0,  1.0, 0.0,
-         1.0, -1.0, 0.0,
-         1.0,  1.0, 0.0,
+        -1.0, 1.0, 0.0, -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0,
+        0.0,
     ];
-
 
     pub fn new() -> Self {
         Self {
@@ -524,21 +563,20 @@ impl QuadGLSL {
         }
     }
 
-
     pub fn init(
         &mut self,
         gl: &Context,
         error_flag: &Arc<AtomicBool>,
         error_msg: &Arc<Mutex<String>>,
         width: i32,
-        height: i32
+        height: i32,
     ) {
         let quad_program_id = create_glsl_program(
             gl,
             Self::VERT_SHADER,
             Self::FRAG_SHADER,
             error_flag,
-            error_msg
+            error_msg,
         );
         self.program = Some(quad_program_id);
         log!("QuadGLSL::init(): self.program={:?}", self.program);
@@ -560,24 +598,33 @@ impl QuadGLSL {
                     0,
                     context::RGB,
                     context::UNSIGNED_BYTE,
-                    None
+                    None,
                 );
-                gl.tex_parameter_i32(context::TEXTURE_2D, context::TEXTURE_MIN_FILTER, context::LINEAR as i32);
-                gl.tex_parameter_i32(context::TEXTURE_2D, context::TEXTURE_MAG_FILTER, context::LINEAR as i32);
+                gl.tex_parameter_i32(
+                    context::TEXTURE_2D,
+                    context::TEXTURE_MIN_FILTER,
+                    context::LINEAR as i32,
+                );
+                gl.tex_parameter_i32(
+                    context::TEXTURE_2D,
+                    context::TEXTURE_MAG_FILTER,
+                    context::LINEAR as i32,
+                );
 
                 gl.framebuffer_texture_2d(
                     context::FRAMEBUFFER,
                     context::COLOR_ATTACHMENT0,
                     context::TEXTURE_2D,
                     self.texture,
-                    0
+                    0,
                 );
 
                 let status = gl.check_framebuffer_status(context::FRAMEBUFFER);
                 if status != context::FRAMEBUFFER_COMPLETE {
                     set_error_for_egui(
-                        error_flag, error_msg,
-                        format!("ERROR: gl.check_framebuffer_status(): {}", status)
+                        error_flag,
+                        error_msg,
+                        format!("ERROR: gl.check_framebuffer_status(): {}", status),
                     );
                 }
             }
@@ -593,7 +640,11 @@ impl QuadGLSL {
                 self.vbo = Some(gl.create_buffer().unwrap());
                 log!("QuadGLSL::init(): self.vbo={:?}", self.vbo);
                 gl.bind_buffer(context::ARRAY_BUFFER, self.vbo);
-                gl.buffer_data_u8_slice(context::ARRAY_BUFFER, transmute_slice::<_, u8>(Self::VERTICES), context::STATIC_DRAW);
+                gl.buffer_data_u8_slice(
+                    context::ARRAY_BUFFER,
+                    transmute_slice::<_, u8>(Self::VERTICES),
+                    context::STATIC_DRAW,
+                );
 
                 self.a_position = gl.get_attrib_location(quad_program_id, "position").unwrap();
                 log!("QuadGLSL::init(): self.a_position={:?}", self.a_position);
@@ -603,12 +654,16 @@ impl QuadGLSL {
                     3,
                     context::FLOAT,
                     false,
-                    3*std::mem::size_of::<f32>() as i32,
-                    0
+                    3 * std::mem::size_of::<f32>() as i32,
+                    0,
                 );
 
-                self.u_screen_texture = gl.get_uniform_location(quad_program_id, "u_screen_texture");
-                log!("QuadGLSL::init(): self.u_screen_texture={:?}", self.u_screen_texture);
+                self.u_screen_texture =
+                    gl.get_uniform_location(quad_program_id, "u_screen_texture");
+                log!(
+                    "QuadGLSL::init(): self.u_screen_texture={:?}",
+                    self.u_screen_texture
+                );
                 gl.uniform_1_i32(self.u_screen_texture.as_ref(), 0); // associate the active texture unit with the uniform
             }
             gl.use_program(None);
@@ -617,11 +672,7 @@ impl QuadGLSL {
         }
     }
 
-
-    pub fn render(
-        &self,
-        gl: &Context,
-    ) {
+    pub fn render(&self, gl: &Context) {
         unsafe {
             gl.use_program(self.program);
             {
@@ -670,27 +721,29 @@ pub async fn main() {
         get_target(),
         get_up(),
         fovy,
-        0.1,//0.2,
-        10.0,//200.0,
+        0.1,  //0.2,
+        10.0, //200.0,
     );
     let mut orbit_control = OrbitControl2::new(*camera.target(), 1.0, 100.0);
     let mut fly_control = FlyControl::new(0.005);
     let mut egui_control = TdCameraControl::Orbit;
 
     // lock-free bus for streamed scene buffer (single-send, multi-consumer)
-    let mut bus_buffer = Bus::<Vec::<u8>>::new(1);
+    let mut bus_buffer = Bus::<Vec<u8>>::new(1);
     let rx_buffer_threaded = bus_buffer.add_rx();
     let mut rx_buffer = bus_buffer.add_rx();
-    let bus_buffer_rc =  Rc::new(RefCell::new(bus_buffer));
+    let bus_buffer_rc = Rc::new(RefCell::new(bus_buffer));
 
     // lock-free bus for scene buffer (single-send, single-consumer)
     let mut bus_progress = Bus::<f64>::new(10);
     let mut rx_progress = bus_progress.add_rx();
-    let bus_progress_rc =  Rc::new(RefCell::new(bus_progress));
+    let bus_progress_rc = Rc::new(RefCell::new(bus_progress));
 
     let mut url = get_url_param();
     if url.is_empty() {
-        url = "https://huggingface.co/datasets/satyoshi/gauzilla-data/resolve/main/book_store.splat".to_string();
+        url =
+            "https://huggingface.co/datasets/satyoshi/gauzilla-data/resolve/main/book_store.splat"
+                .to_string();
     }
     log!("main(): url={}", url);
 
@@ -706,7 +759,21 @@ pub async fn main() {
     splat_glsl.init(&gl, &error_flag, &error_msg, &scene);
 
     let mut quad_glsl = QuadGLSL::new();
-    quad_glsl.init(&gl, &error_flag, &error_msg, canvas_w as i32, canvas_h as i32);
+    quad_glsl.init(
+        &gl,
+        &error_flag,
+        &error_msg,
+        canvas_w as i32,
+        canvas_h as i32,
+    );
+
+    // Initialize scene graph renderer
+    let mut scene_graph_renderer = SceneGraphRenderer::new();
+    scene_graph_renderer.init(&gl, &error_flag, &error_msg);
+
+    // Load scene graph from JSON
+    let scene_graph: SceneGraph =
+        serde_json::from_str(include_str!("../assets/scene_graph.json")).unwrap();
 
     // TODO: implement resize() for change in window size
 
@@ -756,8 +823,8 @@ pub async fn main() {
         let error_flag = Arc::clone(&error_flag);
         let error_msg = Arc::clone(&error_msg);
 
-        let now =  get_time_milliseconds();
-        let fps =  1000.0 / (now - frame_prev);
+        let now = get_time_milliseconds();
+        let fps = 1000.0 / (now - frame_prev);
         frame_prev = now;
         let fps = fps_ma.add(fps);
 
@@ -794,7 +861,7 @@ pub async fn main() {
                             0,
                             context::RGBA_INTEGER,
                             context::UNSIGNED_INT,
-                            Some(transmute_slice::<_, u8>(scene.tex_data.as_slice()))
+                            Some(transmute_slice::<_, u8>(scene.tex_data.as_slice())),
                         );
                     }
 
@@ -872,10 +939,10 @@ pub async fn main() {
                 match egui_control {
                     TdCameraControl::Orbit => {
                         orbit_control.handle_events(&mut camera, &mut frame_input.events);
-                    },
+                    }
                     TdCameraControl::Fly => {
                         fly_control.handle_events(&mut camera, &mut frame_input.events);
-                    },
+                    }
                 }
             }
 
@@ -893,25 +960,49 @@ pub async fn main() {
 
         let view_matrix: &Mat4 = camera.view();
         let view_slice = &[
-            view_matrix[0][0], view_matrix[0][1], view_matrix[0][2], view_matrix[0][3],
-            view_matrix[1][0], view_matrix[1][1], view_matrix[1][2], view_matrix[1][3],
-            view_matrix[2][0], view_matrix[2][1], view_matrix[2][2], view_matrix[2][3],
-            view_matrix[3][0], view_matrix[3][1], view_matrix[3][2], view_matrix[3][3]
+            view_matrix[0][0],
+            view_matrix[0][1],
+            view_matrix[0][2],
+            view_matrix[0][3],
+            view_matrix[1][0],
+            view_matrix[1][1],
+            view_matrix[1][2],
+            view_matrix[1][3],
+            view_matrix[2][0],
+            view_matrix[2][1],
+            view_matrix[2][2],
+            view_matrix[2][3],
+            view_matrix[3][0],
+            view_matrix[3][1],
+            view_matrix[3][2],
+            view_matrix[3][3],
         ];
         let projection_matrix: &Mat4 = camera.projection();
         let projection_slice = &[
-            projection_matrix[0][0], projection_matrix[0][1], projection_matrix[0][2], projection_matrix[0][3],
-            projection_matrix[1][0], projection_matrix[1][1], projection_matrix[1][2], projection_matrix[1][3],
-            projection_matrix[2][0], projection_matrix[2][1], projection_matrix[2][2], projection_matrix[2][3],
-            projection_matrix[3][0], projection_matrix[3][1], projection_matrix[3][2], projection_matrix[3][3]
+            projection_matrix[0][0],
+            projection_matrix[0][1],
+            projection_matrix[0][2],
+            projection_matrix[0][3],
+            projection_matrix[1][0],
+            projection_matrix[1][1],
+            projection_matrix[1][2],
+            projection_matrix[1][3],
+            projection_matrix[2][0],
+            projection_matrix[2][1],
+            projection_matrix[2][2],
+            projection_matrix[2][3],
+            projection_matrix[3][0],
+            projection_matrix[3][1],
+            projection_matrix[3][2],
+            projection_matrix[3][3],
         ];
         let w = camera.viewport().width as f32;
         let h = camera.viewport().height as f32;
         let cam_pos = camera.position();
-        let fx = 0.5*projection_matrix[0][0]*w;
-        let fy = -0.5*projection_matrix[1][1]*h;
+        let fx = 0.5 * projection_matrix[0][0] * w;
+        let fy = -0.5 * projection_matrix[1][1] * h;
         let htany = (fovy / 2.0).tan() as f32;
-        let htanx = (htany/h)*w;
+        let htanx = (htany / h) * w;
         //let focal = h / (2.0 * htany); // == fx == -fy
 
         gui.update(
@@ -920,7 +1011,7 @@ pub async fn main() {
             frame_input.viewport,
             frame_input.device_pixel_ratio,
             |gui_context| {
-                pointer_over_gui = gui_context.is_using_pointer();//.is_pointer_over_area();
+                pointer_over_gui = gui_context.is_using_pointer(); //.is_pointer_over_area();
 
                 if error_flag.load(Ordering::Relaxed) {
                     egui::Window::new("Error")
@@ -945,106 +1036,122 @@ pub async fn main() {
                                     .show_percentage()
                                     .animate(false);
                                 ui.add(progress_bar);
-
                             });
                     } else {
                         egui::Window::new("Gauzilla")
                             //.vscroll(true)
                             .show(gui_context, |ui| {
-                            /*
-                            // TODO: open a PLY file as bytes and process it
-                            if ui.button("Open PLY file").clicked() {
-                                let task = rfd::AsyncFileDialog::new()
-                                    .add_filter("ply", &["ply"])
-                                    .pick_file();
-                                execute_future(async move {
-                                    let file = task.await;
-                                    if let Some(f) = file {
-                                        let bytes = f.read().await;
-                                        match Scene::parse_file_header(bytes) {
-                                            Ok((file_header_size, splat_count, mut cursor)) => {
+                                /*
+                                // TODO: open a PLY file as bytes and process it
+                                if ui.button("Open PLY file").clicked() {
+                                    let task = rfd::AsyncFileDialog::new()
+                                        .add_filter("ply", &["ply"])
+                                        .pick_file();
+                                    execute_future(async move {
+                                        let file = task.await;
+                                        if let Some(f) = file {
+                                            let bytes = f.read().await;
+                                            match Scene::parse_file_header(bytes) {
+                                                Ok((file_header_size, splat_count, mut cursor)) => {
 
-                                            },
-                                            Err(s) => set_error_for_egui(
-                                                &error_flag, &error_msg, String::from("ERROR: could not open the selected file.\
-                                                Choose a correctly formatted PLY file for 3D Gaussian Splatting.")
-                                            ),
+                                                },
+                                                Err(s) => set_error_for_egui(
+                                                    &error_flag, &error_msg, String::from("ERROR: could not open the selected file.\
+                                                    Choose a correctly formatted PLY file for 3D Gaussian Splatting.")
+                                                ),
+                                            }
                                         }
-                                    }
-                                });
-                                ui.close_menu();
-                            }
-                            */
-
-                            egui::Grid::new("my_grid")
-                                .num_columns(2)
-                                .spacing([40.0, 4.0])
-                                .striped(true)
-                                .show(ui, |ui| {
-                                    ui.add(egui::Label::new("FPS"));
-                                    ui.label(format!("{:.2}", fps));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("CPU Sort Time (ms)"));
-                                    ui.label(format!("{:.2}", sort_time));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("CPU Cores"));
-                                    ui.label(format!("{}", cpu_cores));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("GL Version"));
-                                    ui.label(format!("{:?}", gl.version()));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Splat Count"));
-                                    ui.label(format!("{}", scene.splat_count.to_formatted_string(&Locale::en)));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Splat Scale"));
-                                    ui.add(egui::Slider::new(&mut splat_scale, 0.1..=1.0));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Invert Y"));
-                                    ui.checkbox(&mut flip_y, "");
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Window Size"));
-                                    ui.label(format!("{}x{}", w, h));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Focal"));
-                                    ui.label(format!("({:.2}, {:.2})", fx, fy));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Htan FOV"));
-                                    ui.label(format!("({:.2}, {:.2})", htanx, htany));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Camera Position"));
-                                    ui.label(format!("({:.2}, {:.2}, {:.2})", cam_pos.x, cam_pos.y, cam_pos.z));
-                                    ui.end_row();
-
-                                    ui.add(egui::Label::new("Camera Control"));
-                                    ui.horizontal(|ui| {
-                                        ui.radio_value(&mut egui_control, TdCameraControl::Orbit, "Orbit");
-                                        ui.radio_value(&mut egui_control, TdCameraControl::Fly, "Fly");
                                     });
-                                    ui.end_row();
+                                    ui.close_menu();
+                                }
+                                */
 
-                                    ui.add(egui::Label::new("Camera Roll"));
-                                    ui.add(egui::Slider::new(&mut cam_roll, -180.0..=180.0).suffix("°"));
-                                    ui.end_row();
+                                egui::Grid::new("my_grid")
+                                    .num_columns(2)
+                                    .spacing([40.0, 4.0])
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        ui.add(egui::Label::new("FPS"));
+                                        ui.label(format!("{:.2}", fps));
+                                        ui.end_row();
 
-                                    ui.add(egui::Label::new("GitHub"));
-                                    use egui::special_emojis::GITHUB;
-                                    ui.hyperlink_to(
-                                        format!("{GITHUB} BladeTransformerLLC/gauzilla"),
-                                        "https://github.com/BladeTransformerLLC/gauzilla",
-                                    );
-                                    ui.end_row();
-                                });
-                        });
+                                        ui.add(egui::Label::new("CPU Sort Time (ms)"));
+                                        ui.label(format!("{:.2}", sort_time));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("CPU Cores"));
+                                        ui.label(format!("{}", cpu_cores));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("GL Version"));
+                                        ui.label(format!("{:?}", gl.version()));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Splat Count"));
+                                        ui.label(format!(
+                                            "{}",
+                                            scene.splat_count.to_formatted_string(&Locale::en)
+                                        ));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Splat Scale"));
+                                        ui.add(egui::Slider::new(&mut splat_scale, 0.1..=1.0));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Invert Y"));
+                                        ui.checkbox(&mut flip_y, "");
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Window Size"));
+                                        ui.label(format!("{}x{}", w, h));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Focal"));
+                                        ui.label(format!("({:.2}, {:.2})", fx, fy));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Htan FOV"));
+                                        ui.label(format!("({:.2}, {:.2})", htanx, htany));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Camera Position"));
+                                        ui.label(format!(
+                                            "({:.2}, {:.2}, {:.2})",
+                                            cam_pos.x, cam_pos.y, cam_pos.z
+                                        ));
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Camera Control"));
+                                        ui.horizontal(|ui| {
+                                            ui.radio_value(
+                                                &mut egui_control,
+                                                TdCameraControl::Orbit,
+                                                "Orbit",
+                                            );
+                                            ui.radio_value(
+                                                &mut egui_control,
+                                                TdCameraControl::Fly,
+                                                "Fly",
+                                            );
+                                        });
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("Camera Roll"));
+                                        ui.add(
+                                            egui::Slider::new(&mut cam_roll, -180.0..=180.0)
+                                                .suffix("°"),
+                                        );
+                                        ui.end_row();
+
+                                        ui.add(egui::Label::new("GitHub"));
+                                        use egui::special_emojis::GITHUB;
+                                        ui.hyperlink_to(
+                                            format!("{GITHUB} BladeTransformerLLC/gauzilla"),
+                                            "https://github.com/BladeTransformerLLC/gauzilla",
+                                        );
+                                        ui.end_row();
+                                    });
+                            });
                     }
                 }
             },
@@ -1052,7 +1159,7 @@ pub async fn main() {
 
         if !error_flag.load(Ordering::Relaxed) {
             // send view_proj to thread only when it's changed by user input
-            if done_streaming && send_view_proj  {
+            if done_streaming && send_view_proj {
                 let view_proj = projection_matrix * view_matrix;
                 //////////////////////////////////
                 // non-blocking (i.e., no atomic.wait)
@@ -1068,6 +1175,7 @@ pub async fn main() {
                     gl.viewport(0, 0, w as i32, h as i32);
                     gl.clear(context::COLOR_BUFFER_BIT);
 
+                    // Render splats
                     splat_glsl.render(
                         &gl,
                         projection_slice,
@@ -1078,12 +1186,16 @@ pub async fn main() {
                         &[cam_pos.x, cam_pos.y, cam_pos.z],
                         splat_scale,
                         &mut rx_depth,
-                        scene.splat_count as i32
+                        scene.splat_count as i32,
                     );
+
+                    // Render scene graph
+                    scene_graph_renderer.render(&gl, projection_slice, view_slice, &scene_graph);
                 }
                 gl.bind_framebuffer(context::FRAMEBUFFER, None);
 
-                { // render the textured quad
+                {
+                    // render the textured quad
                     gl.viewport(0, 0, w as i32, h as i32);
                     gl.clear(context::COLOR_BUFFER_BIT);
 
@@ -1104,7 +1216,4 @@ pub async fn main() {
     // thread exit is not implemented in rustwasm yet
     // https://rustwasm.github.io/2018/10/24/multithreading-rust-and-wasm.html
     let _ = thread_handle.join();
-
 }
-
-

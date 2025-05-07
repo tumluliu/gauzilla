@@ -1,0 +1,87 @@
+{
+    "root": {
+        "name": "Living Room",
+        "position": [
+            1.0,
+            0.5,
+            0.0
+        ],
+        "children": [
+            {
+                "name": "Sofa",
+                "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "children": [
+                    {
+                        "name": "Cushion 1",
+                        "position": [
+                            1.0,
+                            0.5,
+                            0.5
+                        ],
+                        "children": []
+                    },
+                    {
+                        "name": "Cushion 2",
+                        "position": [
+                            -1.0,
+                            0.5,
+                            0.5
+                        ],
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "name": "Coffee Table",
+                "position": [
+                    0.0,
+                    0.0,
+                    3.0
+                ],
+                "children": [
+                    {
+                        "name": "Vase",
+                        "position": [
+                            0.0,
+                            1.0,
+                            0.0
+                        ],
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "name": "Bookshelf",
+                "position": [
+                    4.0,
+                    0.0,
+                    0.0
+                ],
+                "children": [
+                    {
+                        "name": "Book 1",
+                        "position": [
+                            0.0,
+                            1.0,
+                            0.5
+                        ],
+                        "children": []
+                    },
+                    {
+                        "name": "Book 2",
+                        "position": [
+                            0.0,
+                            1.0,
+                            -0.5
+                        ],
+                        "children": []
+                    }
+                ]
+            }
+        ]
+    }
+}
